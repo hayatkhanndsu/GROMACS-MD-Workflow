@@ -66,3 +66,24 @@ For a 2 fs timestep:
 Hayat Khan
 Genomics and Bioinformatics
 North Dakota State University
+
+
+## Molecular Dynamics Workflow
+
+```mermaid
+flowchart TD
+    A["Prepare protein and ligand structures"] --> B["Generate protein topology"]
+    B --> C["Generate ligand parameters with CGenFF"]
+    C --> D["Construct and verify complex"]
+    D --> E["Create simulation box"]
+    E --> F["Solvate with TIP3P water"]
+    F --> G["Add ions and neutralize"]
+    G --> H["Energy minimization"]
+    H --> I["NVT equilibration"]
+    I --> J["NPT equilibration"]
+    J --> K["Production MD simulation"]
+    K --> L["Trajectory processing"]
+    L --> M["Structural analyses"]
+    M --> N["PCA, FEL and DCCM"]
+    N --> O["MM/PBSA binding-energy analysis"]
+```

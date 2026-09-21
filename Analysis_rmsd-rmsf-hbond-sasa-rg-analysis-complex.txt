@@ -1,0 +1,832 @@
+#Steps to Perform
+
+
+module load gromacs/2024.2
+
+#Step Eight: Production MD
+ 
+
+
+#Recentering and Rewrapping Coordinates
+#As in any simulation conducted with periodic boundary conditions, molecules may appear "broken" or may "jump" back and forth across the box. To recenter the protein and rewrap the molecules within the unit cell to recover the desired rhombic dodecahedral shape, invoke trjconv:
+#--------------------------------------------
+
+# Remove PBC (make molecules whole)
+
+gmx trjconv -s md_0_10.tpr -f md_0_10.xtc -o md_0_10_center.xtc -center -pbc mol -ur compact
+
+# Protein
+
+# System
+
+Choose "Protein" for centering and "System" for output. 
+
+#------------------------------
+# Fit rotation + translation
+
+gmx trjconv -s md_0_10.tpr -f md_0_10_center.xtc -o md_0_10_fit.xtc -fit rot+trans
+
+Selections:
+
+Fit group → Backbone
+
+Output group → System
+
+#---------------------------------
+
+ Remove PBC (make molecules whole)_2
+
+#---------------------------------
+
+cd /mnt/hayat/3BAJ/3BAJ_Stigmasterol
+
+# Remove PBC and center
+gmx trjconv -s md_0_100.tpr -f md_0_100.xtc -o STIG_md_0_100_center.xtc -center -pbc mol -ur compact <<EOF
+1
+0
+EOF
+
+# Fit rotation + translation
+gmx trjconv -s md_0_100.tpr -f STIG_md_0_100_center.xtc -o STIG_md_0_100_fit.xtc -fit rot+trans <<EOF
+4
+0
+EOF
+
+
+
+
+#---------------------------------
+
+ Remove PBC (make molecules whole)_2 end 
+
+#---------------------------------
+NEW 
+
+
+# Check Group Numbers
+
+gmx trjconv -s md_0_10.tpr -f md_0_10_fit.xtc -o test.pdb -dump 0
+
+17 (non-Water)
+That is the correct group (Protein + Ligand).
+
+#-----------------------
+##Generate Snapshots 0–100 ns Now use group 17 directly in loop:
+
+for t in 0 10 20 30 40 50 60 70 80 90 100; do
+    ps=$(($t * 1000))
+    gmx trjconv -s md_0_10.tpr -f md_0_10_fit.xtc \
+    -o snapshot_${t}ns.pdb -dump $ps <<EOF
+17
+EOF
+done
+
+
+#----------------------------------------------------------------
+
+Choose "Protein" for centering and "System" for output. Note that centering complexes (protein-ligand, protein-protein) may be difficult for longer simulations involving many jumps across periodic boundaries. In those instances (particularly in protein-protein complexes), it may be necessary to create a custom index group to use for centering, corresponding to the active site of one protein or the interfacial residues of one monomer in a complex.
+#-------------------------------------------
+
+
+#########################------------------------------------#########################
+#To extract the first frame (t = 0 ns) of the trajectory, use trjconv -dump with the recentered trajectory:
+
+gmx trjconv -s md_0_10.tpr -f md_0_10_center.xtc -o start.pdb -dump 0
+#########################------------------------------------#########################
+
+
+#-------------------------------------------------------------------------
+#For even smoother visualization, it may be beneficial to perform rotational and translational fitting. Execute trjconv as follows:
+
+gmx trjconv -s md_0_10.tpr -f md_0_10_center.xtc -o md_0_10_fit.xtc -fit rot+trans
+
+Fit group → Backbone
+Output group → System
+
+Choose "Backbone" to perform least-squares fitting to the protein backbone, and "System" for output.
+##----------------------
+
+gmx trjconv -s md_0_10.tpr -f md_0_10_fit.xtc -o md_complex.xtc
+
+
+#------------------------------------------------------------------------
+
+#md_0_10_center.xtc
+#md_0_10_fit.xtc
+
+
+#Use protein-ligand complex md simulation results.
+
+
+
+###---------------------------------
+
+# snapshots from 0 → 100 ns
+
+for t in 0 10 20 30 40 50 60 70 80 90 100; do
+    ps=$(($t * 1000))
+    gmx trjconv -s md_0_10.tpr -f md_0_10.xtc \
+    -o Ponatinib_snapshot_${t}ns.pdb -dump $ps <<EOF
+0
+EOF
+done
+
+
+
+
+NEW
+
+# make index
+
+gmx make_ndx -n index.ndx -f md_0_10.tpr 
+
+1 | r UNK
+
+q
+# see new group.
+
+ffor t in 0 10 20 30 40 50 60 70 80 90 100; do
+    ps=$(($t * 1000))
+    gmx trjconv -s md_0_200.tpr -f ACA_md_0_100_fit.xtc -n index.ndx \
+    -o ACA_snapshot_${t}ns.pdb -dump $ps <<EOF
+22
+EOF
+done
+
+            OR
+
+            for t in 0 10 20 30 40 50 60 70 80 90 100; do
+    ps=$(($t * 1000))
+    gmx trjconv -s md_0_10.tpr -f md_0_10_fit.xtc \
+    -n index.ndx \
+    -o Chlorogenic_snapshot_${t}ns.pdb -dump $ps <<EOF
+20
+EOF
+done
+
+
+###----------------------------------
+
+
+
+#------------------------------------------
+
+#1-RMSD for complex
+#Option A (go for option A)
+#For Protein-UNK complex (That’s basically “protein stability in complex”)
+
+gmx rms -s md_0_10.tpr -f md_0_10_fit.xtc -o complex_rmsd.xvg -tu ns
+
+Selections:
+•	Fit group: Protein Backbone
+•	RMSD group: Protein Backbone
+
+#Option B
+#For ligand stability
+gmx rms -s md_0_1.tpr -f md_0_10_fit.xtc -n index.ndx -o ligand_rmsd.xvg -tu ns
+
+Selections:
+•	Fit group: Protein Backbone
+•	RMSD group: UNK
+
+#-------------------------------------------
+#RMSF For complex
+
+gmx rmsf -s md_0_10.tpr -f md_0_10_fit.xtc -o complex_rmsf.xvg -res
+
+
+Select: C-alpha of protein
+
+#----------------------------------------------
+
+#SASA for complex
+
+gmx sasa -s md_0_10.tpr -f md_0_10_center.xtc -n index.ndx -o complex_sasa.xvg -probe 0.14
+
+Select surface group: Protein_UNK
+
+# -----------------------------------------------
+
+#Radius of gyration (Rg) for complex
+
+gmx gyrate -s md_0_10.tpr -f md_0_10_center.xtc -o rg_complex.xvg
+
+Select: Protein 
+(Because Rg measures compactness of protein — including ligand slightly distorts it)
+
+#-------------------------------------------------
+
+#H-bonds
+gmx hbond -f md_0_10_fit.xtc -s md_0_10.tpr -num hbond_ligand_protein.xvg -tu ns
+
+select 1 (Protein)
+ press enter
+ select 13 (UNK)
+ press enter.
+
+#---------------------------------------------------------------
+
+
+
+####---------------------------------------------------
+                PCA
+
+###---------------------------------------------------------------
+
+        For protein analysis Use protein md simulation results.
+
+###----------------------------------------------------------------
+
+1-RMSD for protein
+
+gmx rms -s md_0_10.tpr -f md_0_10_fit.xtc -o protein_rmsd.xvg -tu ns
+
+Selections:
+•   Fit group: Protein Backbone
+•   RMSD group: Protein Backbone
+
+#-----------------------------------
+
+RMSF For complex
+
+gmx rmsf -s md_0_10.tpr -f md_0_10_fit.xtc –o protein_rmsf.xvg -res
+
+Select: C-alpha of protein
+
+#--------------------------------------
+SASA for complex
+
+gmx sasa -s md_0_10.tpr -f md_0_10_center.xtc -o sasa_protein.xvg -probe 0.14
+
+Select surface group: Protein
+#---------------------------------------------------
+Radius of gyration (Rg) for complex
+
+gmx gyrate -s md_0_10.tpr -f md_0_10_center.xtc -o rg_protein.xvg
+
+Select: Protein
+
+#----------------------------------------------------
+
+
+
+####---------------------------------------------------
+                PCA
+####---------------------------------------------------
+
+# Make a GRO from the TPR(for index building)
+
+gmx editconf -f md_0_10.tpr -o md_0_1_tpr.gro
+
+# Create an index with “C-alpha only”
+
+# Since this is APO (no ligand UNK), we only need C-alpha.
+
+gmx make_ndx -f md_0_10_tpr.gro -o pca_index.ndx
+
+a CA
+name 13 CA
+q
+
+
+# Covariance analysis (creates eigenvalues/eigenvectors)
+
+gmx covar -s md_0_1.tpr -f md_0_1_fit.xtc -n pca_index.ndx \
+-o APO_eigenvalues.xvg -v APO_eigenvectors.trr -xpma APO_covapic.xpm
+
+
+
+Selections (it will ask twice):
+
+Fit group → CA (or C-alpha if you did not rename)
+
+Covariance group → CA (same group again)
+
+# Project trajectory on PC1
+
+gmx anaeig -s md_0_1o.tpr -f md_0_1_fit.xtc -n pca_index.ndx \
+-v APO_eigenvectors.trr -first 1 -last 1 -proj APO_pc1.xvg
+
+Selection:
+
+Choose CA (same group)
+
+# Project trajectory on PC2
+
+gmx anaeig -s md_0_1o.tpr -f md_0_1_fit.xtc -n pca_index.ndx \
+-v APO_eigenvectors.trr -first 2 -last 2 -proj APO_pc2.xvg
+
+Selection:
+
+Choose CA (same group)
+
+# Combine PC1 and PC2 into one file
+
+This makes a clean 3-column file: time PC1 PC2
+
+paste APO_pc1.xvg APO_pc2.xvg | awk 'BEGIN{OFS="\t"} !/^[@#]/{print $1,$2,$4}' > APO_PC1_PC2.dat
+
+
+head APO_PC1_PC2.dat
+
+
+#------
+
+#FEL
+
+# Convert PC1 vs PC2
+python clean_convert.py APO_FES12.xpm APO_FEL12.dat
+
+# Convert PC1 vs PC3
+python clean_convert.py APO_FES13.xpm APO_FEL13.dat
+
+# Convert PC2 vs PC3
+python clean_convert.py APO_FES23.xpm APO_FEL23.dat
+
+####---------------------------------------------------
+                PCA
+####---------------------------------------------------
+
+
+
+
+####---------------------------------------------------
+                PCA New 2
+####---------------------------------------------------
+
+# DON PCA
+
+gmx editconf -f md_0_100.tpr -o DON_tpr.gro
+
+gmx make_ndx -f DON_tpr.gro -o DON_pca_index.ndx <<EOF
+a CA
+name 20 CA
+q
+EOF
+
+gmx covar -s md_0_100.tpr -f md_0_100_fit.xtc -n DON_pca_index.ndx -o DON_eigenvalues.xvg -v DON_eigenvectors.trr -xpma DON_covapic.xpm <<EOF
+20
+20
+EOF
+
+gmx anaeig -s md_0_100.tpr -f md_0_100_fit.xtc -n DON_pca_index.ndx -v DON_eigenvectors.trr -first 1 -last 1 -proj DON_pc1.xvg <<EOF
+20
+20
+EOF
+
+gmx anaeig -s md_0_100.tpr -f md_0_100_fit.xtc -n DON_pca_index.ndx -v DON_eigenvectors.trr -first 2 -last 2 -proj DON_pc2.xvg <<EOF
+20
+20
+EOF
+
+gmx anaeig -s md_0_100.tpr -f md_0_100_fit.xtc -n DON_pca_index.ndx -v DON_eigenvectors.trr -first 3 -last 3 -proj DON_pc3.xvg <<EOF
+20
+20
+EOF
+
+paste DON_pc1.xvg DON_pc2.xvg | awk 'BEGIN{OFS="\t"} !/^[@#]/{print $1,$2,$4}' > DON_PC1_PC2.xvg
+paste DON_pc1.xvg DON_pc3.xvg | awk 'BEGIN{OFS="\t"} !/^[@#]/{print $1,$2,$4}' > DON_PC1_PC3.xvg
+paste DON_pc2.xvg DON_pc3.xvg | awk 'BEGIN{OFS="\t"} !/^[@#]/{print $1,$2,$4}' > DON_PC2_PC3.xvg
+
+gmx sham -f DON_PC1_PC2.xvg -ls DON_FES12.xpm
+gmx sham -f DON_PC1_PC3.xvg -ls DON_FES13.xpm
+gmx sham -f DON_PC2_PC3.xvg -ls DON_FES23.xpm
+
+cp DON_FES12.xpm FES.xpm
+python xpm_conv.py
+mv free-energy-landscape.txt DON_FEL12.dat
+
+cp DON_FES13.xpm FES.xpm
+python xpm_conv.py
+mv free-energy-landscape.txt DON_FEL13.dat
+
+cp DON_FES23.xpm FES.xpm
+python xpm_conv.py
+mv free-energy-landscape.txt DON_FEL23.dat
+
+
+
+
+
+
+
+####---------------------------------------------------
+                PCA new 2 End
+####---------------------------------------------------
+
+
+
+
+
+#########----------------------------------------------###########
+
+                          DccM
+#########----------------------------------------------###########
+
+===============================
+DCCM WORKFLOW (AKT1 – 100 ns)
+===============================
+--------------------------------
+STEP 1 — Extract Stable Window (20–100 ns) if you wan the 0 to 100 change the 20000 to 0 
+--------------------------------
+Use centered trajectory
+20 ns = 20000 ps
+100 ns = 100000 ps
+
+gmx trjconv -s md_0_10.tpr -f md_0_10_center.xtc -o md_20_100.xtc -b 0 -e 100000
+
+When prompted:
+Select group for output → System (usually 0)
+Check file
+
+ls -lh md_20_100.xtc
+
+--------------------------------
+STEP 2 — Create C-alpha Index
+--------------------------------
+gmx make_ndx -f md_0_10.tpr -o index_ca.ndx
+
+Inside make_ndx:
+
+a CA
+name 20 CA
+q
+
+--------------------------------
+STEP 3 — Create CA-only Fitted Trajectory
+--------------------------------
+
+gmx trjconv -s md_0_10.tpr -f md_20_100.xtc -o md_CA_fit_20_100.xtc -n index_ca.ndx -fit rot+trans
+
+When prompted:
+Select group for least squares fit → CA
+Select group for output → CA
+Check file
+ls -lh md_CA_fit_20_100.xtc
+
+--------------------------------
+STEP 4 — Create CA-only Topology (Structure)
+--------------------------------
+Extract first frame (20 ns) as CA-only structure
+gmx trjconv -s md_0_10.tpr -f md_20_100.xtc -o CA_structure.pdb -n index_ca.ndx -dump 20000
+
+When prompted:
+Select group for output → CA
+Check file
+ls -lh CA_structure.pdb
+
+--------------------------------
+STEP 5 — Create Python Script for DCCM
+--------------------------------
+nano dccm_AKT1.py
+
+Paste this code:
+
+
+#########----------------------------------------------###########
+                          DccM New 2
+#########----------------------------------------------###########
+
+# DON DCCM preparation: 0–100 ns
+
+gmx trjconv -s md_0_100.tpr -f md_0_100_center.xtc -o DON_md_0_100.xtc -b 0 -e 100000 <<EOF
+0
+EOF
+
+gmx make_ndx -f md_0_100.tpr -o DON_index_ca.ndx <<EOF
+a CA
+name 20 CA
+q
+EOF
+
+gmx trjconv -s md_0_100.tpr -f DON_md_0_100.xtc -o DON_CA_fit_0_100.xtc -n DON_index_ca.ndx -fit rot+trans <<EOF
+20
+20
+EOF
+
+gmx trjconv -s md_0_100.tpr -f DON_md_0_100.xtc -o DON_CA_structure.pdb -n DON_index_ca.ndx -dump 0 <<EOF
+20
+EOF
+
+ls -lh DON_md_0_100.xtc DON_CA_fit_0_100.xtc DON_CA_structure.pdb
+
+
+
+
+
+
+
+#########----------------------------------------------###########
+                          DccM New 2 End
+#########----------------------------------------------###########
+
+
+
+#!/usr/bin/env python3
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+import MDAnalysis as mda
+
+# === Professional Font (Safe on HPC) ===
+plt.rcParams["font.family"] = "serif"
+plt.rcParams["font.serif"] = ["Times", "DejaVu Serif"]
+
+# === Create output folder ===
+os.makedirs("Combined_Plots", exist_ok=True)
+
+# === Load CA-only topology and trajectory ===
+u = mda.Universe("CA_structure.pdb", "md_CA_fit_20_100.xtc")
+ca = u.select_atoms("name CA")
+n = ca.n_atoms
+
+print(f"Number of CA atoms: {n}")
+
+# === Collect positions ===
+positions = []
+for ts in u.trajectory:
+    positions.append(ca.positions.copy())
+
+pos = np.array(positions)
+
+# === Compute fluctuations ===
+mean_pos = pos.mean(axis=0)
+fluct = pos - mean_pos
+
+fi2 = np.mean(np.sum(fluct**2, axis=2), axis=0)
+den = np.sqrt(np.outer(fi2, fi2)) + 1e-12
+
+dccm = np.zeros((n, n))
+
+for i in range(n):
+    num = np.mean(np.sum(fluct[:, i, None, :] * fluct, axis=2), axis=0)
+    dccm[i, :] = num / den[i, :]
+
+# === Save matrix ===
+np.savetxt("DCCM_Compound-9_CA.dat", dccm, fmt="%.6f")
+
+# === Plot ===
+plt.figure(figsize=(9, 8))
+
+im = plt.imshow(
+    dccm,
+    cmap="bwr",
+    vmin=-1,
+    vmax=1,
+    origin="lower"
+)
+
+cbar = plt.colorbar(im)
+cbar.set_label("Correlation", fontsize=16, fontweight="bold")
+
+plt.title(
+    "DCCM – Compound 9 (Cα)",
+    fontsize=20,
+    fontweight="bold",
+    pad=15
+)
+
+plt.xlabel("Residue Index", fontsize=18, fontweight="bold")
+plt.ylabel("Residue Index", fontsize=18, fontweight="bold")
+
+plt.grid(False)
+plt.tick_params(direction="out", length=6, width=3, labelsize=14)
+
+ax = plt.gca()
+for spine in ax.spines.values():
+    spine.set_linewidth(3)
+
+plt.tight_layout()
+
+filename = "DCCM_Compound-9_CA.png"
+plt.savefig(os.path.join("Combined_Plots", filename), dpi=400)
+plt.show()
+
+print(f"✅ Saved: Combined_Plots/{filename}")
+
+
+
+
+
+
+
+  
+############################################################
+# PCA + FEL WORKFLOW TEMPLATE
+# Replace COMPOUND with your ligand name
+############################################################
+
+############################################################
+# 1. Make GRO file from TPR
+# Needed for PCA index creation
+############################################################
+
+gmx editconf -f md_0_10.tpr -o md_0_10_tpr.gro
+
+
+############################################################
+# 2. Create PCA index file
+# Makes a C-alpha only group
+############################################################
+
+gmx make_ndx -f md_0_10_tpr.gro -o pca_index.ndx
+
+# Inside make_ndx type:
+# a CA
+# name 13 CA
+# q
+
+
+############################################################
+# 3. Covariance Analysis
+# Generates eigenvalues/eigenvectors for PCA
+############################################################
+
+gmx covar -s md_0_10.tpr -f md_0_10_fit.xtc -n pca_index.ndx \
+-o COMPOUND_eigenvalues.xvg \
+-v COMPOUND_eigenvectors.trr \
+-xpma COMPOUND_covapic.xpm
+
+# Select:
+# 13 = CA
+# 13 = CA
+
+
+############################################################
+# 4. Project Trajectory onto PC1
+############################################################
+
+gmx anaeig -s md_0_10.tpr -f md_0_10_fit.xtc -n pca_index.ndx \
+-v COMPOUND_eigenvectors.trr -first 1 -last 1 \
+-proj COMPOUND_pc1.xvg
+
+# Select:
+# 13 = CA
+
+
+############################################################
+# 5. Project Trajectory onto PC2
+############################################################
+
+gmx anaeig -s md_0_10.tpr -f md_0_10_fit.xtc -n pca_index.ndx \
+-v COMPOUND_eigenvectors.trr -first 2 -last 2 \
+-proj COMPOUND_pc2.xvg
+
+# Select:
+# 13 = CA
+
+
+############################################################
+# 6. Project Trajectory onto PC3
+############################################################
+
+gmx anaeig -s md_0_10.tpr -f md_0_10_fit.xtc -n pca_index.ndx \
+-v COMPOUND_eigenvectors.trr -first 3 -last 3 \
+-proj COMPOUND_pc3.xvg
+
+# Select:
+# 13 = CA
+
+
+############################################################
+# 7. Create PC Combination Files
+# Creates files for PCA/FEL analysis
+############################################################
+
+paste COMPOUND_pc1.xvg COMPOUND_pc2.xvg | awk 'BEGIN{OFS="\t"} !/^[@#]/{print $1,$2,$4}' > COMPOUND_PC1_PC2.xvg
+
+paste COMPOUND_pc1.xvg COMPOUND_pc3.xvg | awk 'BEGIN{OFS="\t"} !/^[@#]/{print $1,$2,$4}' > COMPOUND_PC1_PC3.xvg
+
+paste COMPOUND_pc2.xvg COMPOUND_pc3.xvg | awk 'BEGIN{OFS="\t"} !/^[@#]/{print $1,$2,$4}' > COMPOUND_PC2_PC3.xvg
+
+
+############################################################
+# 8. Generate Free Energy Surface (FES)
+############################################################
+
+gmx sham -f COMPOUND_PC1_PC2.xvg -ls COMPOUND_FES12.xpm -notime
+
+gmx sham -f COMPOUND_PC1_PC3.xvg -ls COMPOUND_FES13.xpm -notime
+
+gmx sham -f COMPOUND_PC2_PC3.xvg -ls COMPOUND_FES23.xpm -notime
+
+
+############################################################
+# 9. Convert XPM to DAT
+# Converts FES map into numerical FEL file
+############################################################
+
+python clean_convert.py COMPOUND_FES12.xpm COMPOUND_FEL12.dat
+
+python clean_convert.py COMPOUND_FES13.xpm COMPOUND_FEL13.dat
+
+python clean_convert.py COMPOUND_FES23.xpm COMPOUND_FEL23.dat
+
+
+############################################################
+# 10. Check Output Files
+############################################################
+
+ls COMPOUND_pc1.xvg
+ls COMPOUND_pc2.xvg
+ls COMPOUND_pc3.xvg
+ls COMPOUND_FES*.xpm
+ls COMPOUND_FEL*.dat
+
+
+
+
+
+############################################################
+                    #   MMPBSA
+############################################################
+
+
+# MMPBSA
+
+STEP 0 — Activate MMPBSA environment
+
+conda activate mmpbsa_env
+
+1️ Prepare processed trajectory
+
+Remove PBC and center:
+
+gmx trjconv -s md_0_1.tpr -f md_0_1.xtc -o md_0_1_processed.xtc -pbc mol -center
+
+
+Choose group:
+
+Protein
+
+System
+
+
+STEP 1 — Check index groups (Protein & LIG)
+We need to know which group is protein (receptor) and which is LIG (ligand).
+
+gmx make_ndx -f md_0_1.tpr -n index.ndx
+
+Inside the menu, just look for lines like:
+
+1 Protein
+
+13 LIG (or some other number)
+
+ STEP 1 — Create the no-PBC trajectory (required for MM/PBSA)
+
+Run exactly this:
+
+gmx trjconv \
+  -s md_0_1.tpr \
+  -f 4w93_Apigetrin.xtc \
+  -o 4w93_Apigetrin_noPBC.xtc \
+  -pbc mol \
+  -center
+
+When GROMACS asks:
+
+1️ Select Protein
+2️ Select System
+
+
+
+mpirun -np 16 gmx_MMPBSA \
+  -O \
+  -i mmpbsa.in \
+  -cs md_0_1.tpr \
+  -ci index.ndx \
+  -cg 1 13 \
+  -ct 4w93_Apigetrin_noPBC.xtc \
+  -cp topol.top \
+  -o FINAL_RESULTS_MMPBSA.dat \
+  -eo FINAL_ENERGY_COMPONENTS.dat \
+  -nogui
+
+
+
+
+############################################################
+                    #   MMPBSA New 2
+############################################################
+
+cd /mnt/hayat/3I4B/3I4B_dihydrotanshinone
+
+gmx trjconv -s md_0_100.tpr -f md_0_100.xtc -o DIH_noPBC.xtc -pbc mol -center <<EOF
+1
+0
+EOF
+
+mpirun -np 16 gmx_MMPBSA -O -i mmpbsa.in -cs md_0_100.tpr -ci index.ndx -cg 1 13 -ct DIH_noPBC.xtc -cp topol.top -o DIH_FINAL_RESULTS_MMPBSA.dat -eo DIH_FINAL_ENERGY_COMPONENTS.dat -nogui
+
+############################################################
+                    #   MMPBSA New 2 End 
+############################################################
+
+
+ssh -L 8888:localhost:8888 hayat@134.129.113.32 
+
+
+sbatch --dependency=afterok:7421 3BAJ_STIG.slurm
+
+

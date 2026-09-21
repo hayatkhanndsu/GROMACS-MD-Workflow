@@ -1,0 +1,286 @@
+#Steps to Perform
+
+
+module load gromacs/2024.2
+
+#Step Eight: Production MD
+
+
+
+# ==========================================================
+# UNIVERSAL PROTEIN TRAJECTORY PREPARATION
+# Suitable for single-chain and multichain proteins
+# ==========================================================
+
+# Step 1: Remove periodic jumps
+gmx trjconv -s md_0_200.tpr -f md_0_200.xtc -o System_nojump.xtc -pbc nojump <<EOF
+System
+EOF
+
+# Step 2: Keep all protein chains together and center the protein
+gmx trjconv -s md_0_200.tpr -f System_nojump.xtc -o System_protein_cluster.xtc -pbc cluster -center -ur compact <<EOF
+Protein
+Protein
+Protein
+EOF
+
+# Step 3: Remove overall rotation and translation
+gmx trjconv -s md_0_200.tpr -f System_protein_cluster.xtc -o System_protein_fit.xtc -fit rot+trans <<EOF
+Backbone
+Protein
+EOF
+
+# Confirm the files were created
+ls -lh System_nojump.xtc System_protein_cluster.xtc System_protein_fit.xtc
+
+
+#########----------------------------------------------###########
+               Remove PBC (make molecules whole)_ END
+#########----------------------------------------------###########
+
+
+
+#########----------------------------------------------###########
+               snapshots_2 
+#########----------------------------------------------###########
+
+
+
+
+
+# make index
+
+gmx make_ndx -n index.ndx -f md_0_10.tpr 
+
+1 | r UNK
+
+
+cd /mnt/hayat/MDS-jordan/MBFL4
+
+mkdir -p Snapshots_MBFL4
+
+for t in 0 10 20 30 40 50 60 70 80 90 100; do
+    ps=$((t * 1000))
+
+    gmx trjconv -s md_0_100.tpr -f md_0_100_fit.xtc -n index.ndx \
+    -o snapshots/MBFL4_snapshot_${t}ns.pdb -dump $ps <<EOF
+20
+EOF
+
+done
+
+ls -lh snapshots/
+
+
+#########----------------------------------------------###########
+               snapshots_2 END
+#########----------------------------------------------###########
+
+
+
+
+
+#########----------------------------------------------###########
+               RMSD_RMSF_(Rg)_H-bonds_SASA_NEW_2
+#########----------------------------------------------###########
+
+#==========================================================
+# RMSD (Protein Backbone)
+# Select:
+# Protein Backbone
+# Protein Backbone
+#==========================================================
+gmx rms -s md_0_200.tpr -f ACA_md_0_100_fit.xtc -o ACA_RMSD.xvg -tu ns <<EOF
+4
+4
+EOF
+
+#==========================================================
+# RMSF (C-alpha)
+# Select:
+# C-alpha of Protein
+#==========================================================
+gmx rmsf -s md_0_200.tpr -f ACA_md_0_100_fit.xtc -o ACA_RMSF.xvg -res <<EOF
+3
+EOF
+
+#==========================================================
+# Radius of Gyration (Protein)
+# Select:
+# Protein
+#==========================================================
+gmx gyrate -s md_0_200.tpr -f ACA_md_0_100_center.xtc -o ACA_Rg.xvg <<EOF
+1
+EOF
+
+#==========================================================
+# H-Bonds (Protein-Ligand)
+# Select:
+# Protein
+# Press Enter
+# UNK
+# Press Enter
+#==========================================================
+gmx hbond -f ACA_md_0_100_fit.xtc -s md_0_200.tpr -num ACA_Hbond_ligand_protein.xvg -tu ns <<EOF
+1
+
+13
+EOF
+
+#==========================================================
+# SASA (Protein-Ligand Complex)
+# Select:
+# Protein_UNK
+#==========================================================
+gmx sasa -s md_0_200.tpr -f ACA_md_0_100_center.xtc -n index.ndx -o ACA_SASA.xvg -probe 0.14 <<EOF
+22
+EOF
+
+
+
+ls *.xvg
+
+
+
+#########----------------------------------------------###########
+               RMSD_RMSF_(Rg)_H-bonds_SASA_NEW_2 END
+#########----------------------------------------------###########
+
+
+
+
+
+#########----------------------------------------------###########
+               PCA_andFEL_2 
+#########----------------------------------------------###########
+
+# DON PCA
+
+gmx editconf -f md_0_100.tpr -o DON_tpr.gro
+
+gmx make_ndx -f DON_tpr.gro -o DON_pca_index.ndx <<EOF
+a CA
+name 20 CA
+q
+EOF
+
+gmx covar -s md_0_100.tpr -f md_0_100_fit.xtc -n DON_pca_index.ndx -o DON_eigenvalues.xvg -v DON_eigenvectors.trr -xpma DON_covapic.xpm <<EOF
+20
+20
+EOF
+
+gmx anaeig -s md_0_100.tpr -f md_0_100_fit.xtc -n DON_pca_index.ndx -v DON_eigenvectors.trr -first 1 -last 1 -proj DON_pc1.xvg <<EOF
+20
+20
+EOF
+
+gmx anaeig -s md_0_100.tpr -f md_0_100_fit.xtc -n DON_pca_index.ndx -v DON_eigenvectors.trr -first 2 -last 2 -proj DON_pc2.xvg <<EOF
+20
+20
+EOF
+
+gmx anaeig -s md_0_100.tpr -f md_0_100_fit.xtc -n DON_pca_index.ndx -v DON_eigenvectors.trr -first 3 -last 3 -proj DON_pc3.xvg <<EOF
+20
+20
+EOF
+
+paste DON_pc1.xvg DON_pc2.xvg | awk 'BEGIN{OFS="\t"} !/^[@#]/{print $1,$2,$4}' > DON_PC1_PC2.xvg
+paste DON_pc1.xvg DON_pc3.xvg | awk 'BEGIN{OFS="\t"} !/^[@#]/{print $1,$2,$4}' > DON_PC1_PC3.xvg
+paste DON_pc2.xvg DON_pc3.xvg | awk 'BEGIN{OFS="\t"} !/^[@#]/{print $1,$2,$4}' > DON_PC2_PC3.xvg
+
+gmx sham -f DON_PC1_PC2.xvg -ls DON_FES12.xpm
+gmx sham -f DON_PC1_PC3.xvg -ls DON_FES13.xpm
+gmx sham -f DON_PC2_PC3.xvg -ls DON_FES23.xpm
+
+cp DON_FES12.xpm FES.xpm
+python xpm_conv.py
+mv free-energy-landscape.txt DON_FEL12.dat
+
+cp DON_FES13.xpm FES.xpm
+python xpm_conv.py
+mv free-energy-landscape.txt DON_FEL13.dat
+
+cp DON_FES23.xpm FES.xpm
+python xpm_conv.py
+mv free-energy-landscape.txt DON_FEL23.dat
+
+
+#########----------------------------------------------###########
+                PCA_andFEL_2  END
+#########----------------------------------------------###########
+
+
+
+#########----------------------------------------------###########
+                             DccM_2  
+#########----------------------------------------------###########
+# DON DCCM preparation: 0–100 ns
+
+gmx trjconv -s md_0_100.tpr -f md_0_100_center.xtc -o DON_md_0_100.xtc -b 0 -e 100000 <<EOF
+0
+EOF
+
+gmx make_ndx -f md_0_100.tpr -o DON_index_ca.ndx <<EOF
+a CA
+name 20 CA
+q
+EOF
+
+gmx trjconv -s md_0_100.tpr -f DON_md_0_100.xtc -o DON_CA_fit_0_100.xtc -n DON_index_ca.ndx -fit rot+trans <<EOF
+20
+20
+EOF
+
+gmx trjconv -s md_0_100.tpr -f DON_md_0_100.xtc -o DON_CA_structure.pdb -n DON_index_ca.ndx -dump 0 <<EOF
+20
+EOF
+
+ls -lh DON_md_0_100.xtc DON_CA_fit_0_100.xtc DON_CA_structure.pdb
+
+
+#########----------------------------------------------###########
+                          DccM_2  END
+#########----------------------------------------------###########
+
+
+
+
+
+#########----------------------------------------------###########
+                          MMPBSA_2
+#########----------------------------------------------###########
+
+
+
+gmx trjconv -s md_0_100.tpr -f md_0_100.xtc -o DIH_noPBC.xtc -pbc mol -center <<EOF
+1
+0
+EOF
+
+mpirun -np 16 gmx_MMPBSA -O -i mmpbsa.in -cs md_0_100.tpr -ci index.ndx -cg 1 13 -ct DIH_noPBC.xtc -cp topol.top -o DIH_FINAL_RESULTS_MMPBSA.dat -eo DIH_FINAL_ENERGY_COMPONENTS.dat -nogui
+
+
+ls -lh \
+HSP_Apigenin_FINAL_RESULTS_MMPBSA.dat \
+HSP_Apigenin_FINAL_ENERGY_COMPONENTS.dat
+
+
+
+#########----------------------------------------------###########
+                          MMPBSA_2  END
+#########----------------------------------------------###########
+
+
+
+ssh -L 8888:localhost:8888 hayat@134.129.113.32 
+
+
+sbatch --dependency=afterok:7421 3BAJ_STIG.slurm
+
+
+
+
+
+
+
+

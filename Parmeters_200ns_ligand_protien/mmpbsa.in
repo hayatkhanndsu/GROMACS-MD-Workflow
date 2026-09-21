@@ -1,0 +1,10 @@
+&general
+   startframe=15000,
+   endframe=19995,
+   interval=50,
+   keep_files=2,
+/
+
+&pb
+   istrng=0.150,
+/

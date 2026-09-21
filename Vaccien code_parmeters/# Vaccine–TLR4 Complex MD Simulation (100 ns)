@@ -1,0 +1,172 @@
+# Vaccine–TLR4 MD Simulation
+# GROMACS 2025.3
+# AMBER99SB-ILDN + TIP3P
+# 100 ns
+# Replicate 1
+
+#-----------------------------------------------------
+# Load GROMACS
+
+module load gromacs/2025.3
+
+#-----------------------------------------------------
+# Check files in the folder
+
+ls
+
+#-----------------------------------------------------
+# Remove HOH water and NAG from PDB
+
+grep -v HOH "Vaccine_receptor Complex.pdb" | grep -v NAG > complex_clean_noNAG.pdb
+
+# check file
+
+ls -lh complex_clean_noNAG.pdb
+
+#-----------------------------------------------------
+# Generate topology
+
+gmx pdb2gmx -f complex_clean_noNAG.pdb -o complex_processed.gro -water tip3p -ff amber99sb-ildn -ignh
+
+# Select if asked:
+# AMBER99SB-ILDN
+# TIP3P
+
+#-----------------------------------------------------
+# Create cubic box
+
+gmx editconf -f complex_processed.gro -o complex_newbox.gro -c -d 1.0 -bt cubic
+
+#-----------------------------------------------------
+# Add water / solvate
+
+gmx solvate -cp complex_newbox.gro -cs spc216.gro -o complex_solv.gro -p topol.top
+
+# check SOL
+
+grep SOL topol.top
+
+#-----------------------------------------------------
+# Add ions
+
+gmx grompp -f ions.mdp -c complex_solv.gro -p topol.top -o ions.tpr
+
+gmx genion -s ions.tpr -o complex_solv_ions.gro -p topol.top -pname NA -nname CL -neutral
+
+# Select:
+# SOL
+# Check the group number shown by GROMACS and select SOL
+
+# check topology
+
+tail -20 topol.top
+
+#-----------------------------------------------------
+# Energy Minimization
+
+gmx grompp -f minim.mdp -c complex_solv_ions.gro -p topol.top -o em.tpr
+
+gmx mdrun -v -deffnm em
+
+#-----------------------------------------------------
+# Check Energy Minimization
+
+grep "Fmax" em.log | tail
+
+# Fmax should preferably be below 1000 kJ/mol/nm
+
+#-----------------------------------------------------
+# NVT
+
+gmx grompp -f nvt.mdp -c em.gro -r em.gro -p topol.top -o nvt.tpr
+
+gmx mdrun -v -deffnm nvt -ntomp 64
+
+#-----------------------------------------------------
+# Check Temperature
+
+gmx energy -f nvt.edr -o temperature.xvg
+
+# Select:
+# Temperature
+# then press 0
+
+# Temperature should be around 300 K
+
+#-----------------------------------------------------
+# NPT
+
+gmx grompp -f npt.mdp -c nvt.gro -r nvt.gro -t nvt.cpt -p topol.top -o npt.tpr
+
+gmx mdrun -v -deffnm npt -ntomp 64
+
+#-----------------------------------------------------
+# Check Pressure
+
+gmx energy -f npt.edr -o pressure.xvg
+
+# Select:
+# Pressure
+# then press 0
+
+#-----------------------------------------------------
+# Check Density
+
+gmx energy -f npt.edr -o density.xvg
+
+# Select:
+# Density
+# then press 0
+
+# Density should be around 1000 kg/m^3
+
+#-----------------------------------------------------
+# Production MD 100 ns
+
+# Check md.mdp
+# dt = 0.002
+# nsteps = 50000000
+#
+# 50,000,000 x 0.002 ps = 100 ns
+
+gmx grompp -f md.mdp -c npt.gro -t npt.cpt -p topol.top -o md_0_100.tpr
+
+#-----------------------------------------------------
+# Run MD directly
+
+gmx mdrun -v -deffnm md_0_100 -ntomp 64 -cpt 15
+
+# OR run using SLURM
+
+sbatch Vaccine_run_md.sh
+
+#-----------------------------------------------------
+# Check SLURM job
+
+squeue -u $USER
+
+#-----------------------------------------------------
+# Monitor MD
+
+tail -f md_0_100.log
+
+# Ctrl + C to exit tail
+# This does NOT stop the MD simulation
+
+#-----------------------------------------------------
+# Three Replicas
+
+# Replicate 1
+# gen_seed = 12345
+
+# Replicate 2
+# gen_seed = 23456
+
+# Replicate 3
+# gen_seed = 34567
+
+# First run Replicate 1.
+# After Replicate 1 works correctly,
+# prepare Replicate 2 and Replicate 3.
+
+#-----------------------------------------------------

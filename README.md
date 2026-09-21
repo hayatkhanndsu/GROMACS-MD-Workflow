@@ -64,5 +64,5 @@ For a 2 fs timestep:
 ## Author
 
 Hayat Khan
-Biological Sciences
+Genomics and Bioinformatics
 North Dakota State University

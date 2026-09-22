@@ -1,0 +1,2 @@
+TLR4 (4G8A) 839 amino acids, Mass (Da) 95,680
+V1_TLR4 DOCKED COMPLEX Energy=  -1319.7

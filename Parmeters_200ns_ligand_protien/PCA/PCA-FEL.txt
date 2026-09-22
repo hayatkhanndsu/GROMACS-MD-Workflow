@@ -1,0 +1,26 @@
+#PCA analysis
+gmx editconf -f md_0_10.tpr -o md_0_10_tpr.gro
+
+gmx make_ndx -f md_0_10_tpr.gro -o test_index.ndx
+13 & ! a H* #(UNK with heavy atoms only)
+#This creates UNK-noH (new group number, say 24)
+3 | 24  #(select C-alpha | UNK)
+name 25 CA_UNK #(if CA_UNK is 25 or put whatever the no. for combined Calpha and UNK it showed)
+q
+
+gmx covar -s md.tpr -f md_0_10_fit.xtc -n test_index.ndx -o eigenvalues.xvg -v eigenvectors.trr -xpma covapic.xpm
+Select Fit group: C-alpha and Covariance group: CA_UNK
+
+gmx anaeig -s md_0_10.tpr -f md_0_10_fit.xtc -n test_index.ndx -v eigenvectors.trr -last 1 -proj pc1.xvg
+Select CA_UNK
+
+gmx anaeig -s md_0_10.tpr -f md_0_10_fit.xtc -n test_index.ndx -v eigenvectors.trr -first 2 -last 2 -proj pc2.xvg
+Select CA_UNK
+
+paste pc1.xvg pc2.xvg | awk '{print $1, $2, $4}' > PC1PC2.xvg
+
+#FEL analysis
+gmx sham -f PC1PC2.xvg -ls FES.xpm
+python2.7 xpm2txt.py -f FES.xpm -o free-energy-landscape.dat
+mv free-energy-landscape.dat free-energy-landscape.txt
+python3 plotting-script.py
